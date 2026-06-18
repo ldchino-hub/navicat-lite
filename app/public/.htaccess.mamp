@@ -1,0 +1,23 @@
+# MAMP subdirectory — copy over .htaccess for local dev:
+#   cp public/.htaccess.mamp public/.htaccess
+SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteBase /navicat-php-1.0.0/public/
+
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+RewriteCond %{REQUEST_URI} (^|/)api/ [NC]
+RewriteRule ^ index.php [L,QSA]
+
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^ - [L]
+
+RewriteRule ^ index.php [L,QSA]
+</IfModule>
+
+<IfModule !mod_rewrite.c>
+FallbackResource /navicat-php-1.0.0/public/index.php
+</IfModule>

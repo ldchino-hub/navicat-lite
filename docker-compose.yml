@@ -1,0 +1,24 @@
+services:
+  navicat-lite:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: navicat-lite:1.2.3
+    container_name: Navicat-Lite
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - navicat-lite-storage:/var/www/html/storage
+    ports:
+      - "${NAVICAT_LITE_PORT:-8789}:80"
+    networks:
+      - navicat-net
+
+volumes:
+  navicat-lite-storage:
+
+networks:
+  navicat-net:
+    external: true
+    name: navicat-net
