@@ -1,9 +1,17 @@
 <?php
 return [
-    'app_name' => 'DB Tool Box PHP',
+    'app_name' => 'DB Tool Box Lite',
     'debug' => false,
 
-    // SQLite metadata DB (works on most PHP hosts)
+    // Metadata DB: sqlite (default) or mysql (shared hosting / db.ldjr.me)
+    // 'database' => [
+    //     'driver' => 'mysql',
+    //     'host' => 'localhost',
+    //     'port' => 3306,
+    //     'database' => 'DBAdmin',
+    //     'username' => 'Galilea',
+    //     'password' => '',
+    // ],
     'database_path' => __DIR__ . '/../storage/database.sqlite',
 
     // 64 hex chars (32 bytes) — generate: openssl rand -hex 32

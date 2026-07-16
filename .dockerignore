@@ -1,0 +1,9 @@
+.git
+**/node_modules
+app/frontend/node_modules
+app/frontend/src
+**/*.map
+.env
+*.md
+tests
+download

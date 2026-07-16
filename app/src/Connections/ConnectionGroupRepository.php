@@ -104,7 +104,7 @@ final class ConnectionGroupRepository
                 continue;
             }
             unset($meta['sidebarGroupId']);
-            App::db()->prepare("UPDATE connections SET meta_json = ?, updated_at = datetime('now') WHERE id = ?")
+            App::db()->prepare('UPDATE connections SET meta_json = ?, updated_at = ' . \Navicat\Database::nowSql() . ' WHERE id = ?')
                 ->execute([json_encode($meta), $cid]);
         }
     }

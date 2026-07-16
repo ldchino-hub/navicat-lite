@@ -16,12 +16,17 @@ final class App
     public static function init(array $config): void
     {
         self::$config = $config;
-        $dir = dirname((string)$config['database_path']);
-        if (!is_dir($dir)) mkdir($dir, 0755, true);
+        $dir = dirname((string)($config['database_path'] ?? (__DIR__ . '/../storage/database.sqlite')));
+        if (!is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
         $backupDir = (string)$config['backup_dir'];
-        if (!is_dir($backupDir)) mkdir($backupDir, 0755, true);
-        self::$db = Database::connect((string)$config['database_path']);
-        Database::migrateAll(self::$db, dirname(__DIR__) . '/migrations');
+        if (!is_dir($backupDir)) {
+            mkdir($backupDir, 0755, true);
+        }
+        self::disconnect();
+        self::$db = Database::connectFromConfig($config);
+        Database::migrateAll(self::$db, Database::migrationsDir());
     }
 
     /** @return array<string,mixed> */
@@ -30,9 +35,36 @@ final class App
         return self::$config;
     }
 
+    public static function disconnect(): void
+    {
+        self::$db = null;
+    }
+
     public static function db(): PDO
     {
-        if (!self::$db) throw new \RuntimeException('App not initialized');
+        if (!self::$db) {
+            if (self::$config === []) {
+                throw new \RuntimeException('App not initialized');
+            }
+            self::$db = Database::connectFromConfig(self::$config);
+        }
+        if (Database::isMysql()) {
+            try {
+                self::$db->query('SELECT 1');
+            } catch (\PDOException $e) {
+                $msg = $e->getMessage();
+                if (str_contains($msg, 'Too many connections') || str_contains($msg, '[1040]')) {
+                    throw $e;
+                }
+                self::disconnect();
+                self::$db = Database::connectFromConfig(self::$config);
+            }
+        }
         return self::$db;
+    }
+
+    public static function isMysql(): bool
+    {
+        return Database::isMysql();
     }
 }

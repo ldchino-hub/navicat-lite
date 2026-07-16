@@ -17,9 +17,9 @@
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["../../navicat-ui/src/*"],
-      "@navicat/ui": ["../../navicat-ui/src/index.ts"]
+      "@/*": ["../../../navicat-ui/src/*"],
+      "@navicat/ui": ["../../../navicat-ui/src/index.ts"]
     }
   },
-  "include": ["src", "../../navicat-ui/src"]
+  "include": ["src", "../../../navicat-ui/src"]
 }

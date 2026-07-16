@@ -1,67 +1,25 @@
-# Navicat Lite
+# DB Tool Box Lite
 
-Edición **ligera y autocontenida** de [DB Tool Box](https://github.com/ldchino-hub): cliente web para administrar MySQL, PostgreSQL y MongoDB desde un único contenedor Docker.
+Shared-hosting-friendly PHP edition of DB Tool Box (v1.0.0).
 
-- **Backend:** PHP 8.3 + Apache  
-- **Metadatos:** SQLite (sin PostgreSQL externo)  
-- **UI:** React (bundle incluido en la imagen)  
-- **Versión:** ver [`app/VERSION`](app/VERSION)
+- **Edition:** `lite` — no Scheduler, Collectors, DPA, Query Store, AI Analysis, DBA Ops, OS Shell, or in-app System Update
+- **Runtime:** PHP 8.3 + Apache (Docker) or plain PHP on shared hosting
+- **Prod Pi:** http://192.168.100.152:8789
+- **Prod shared:** https://db.ldjr.me
 
-## Requisitos
-
-- Docker + Docker Compose v2
-- Red Docker `navicat-net` (o edita `docker-compose.yml`)
+## Quick start (Docker)
 
 ```bash
-docker network create navicat-net 2>/dev/null || true
-```
-
-## Inicio rápido
-
-```bash
-git clone https://github.com/ldchino-hub/navicat-lite.git
-cd navicat-lite
 cp .env.example .env
-# Edita .env: META_ENC_KEY, JWT_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD
-
+# set META_ENC_KEY / JWT_SECRET / ADMIN_*
 docker compose up -d --build
+curl -s http://127.0.0.1:8789/api/health
 ```
 
-Abre **http://localhost:8789** (o el puerto definido en `NAVICAT_LITE_PORT`).
+## Shared hosting
 
-En el primer arranque se crea el usuario admin según `.env`. Cambia la contraseña en producción.
+Upload `app/` contents (with built `public/`) to the docroot. Copy `config/config.example.php` → `config/config.php` and set secrets. Ensure `storage/` is writable.
 
-## Estructura
+## License
 
-```
-navicat-lite/
-  Dockerfile           # Imagen Apache + PHP + UI embebida
-  docker-compose.yml
-  app/                 # Backend PHP (mismo núcleo que navicat-php)
-  download/            # Página estática de descarga (opcional)
-```
-
-Los datos persistentes (SQLite, backups) viven en el volumen Docker `navicat-lite-storage`.
-
-## Diferencias vs DB Tool Box completo
-
-| | Navicat Lite | DB Tool Box Web + PHP |
-|--|--------------|------------------------|
-| Despliegue | 1 contenedor | Stack multi-servicio |
-| Meta DB | SQLite | PostgreSQL (web) / SQLite (php) |
-| VPN OpenVPN | No | Sí (web) |
-| Ideal para | NAS, demo, hosting simple | Producción multi-usuario |
-
-## Desarrollo
-
-El código PHP está en `app/`. Para reconstruir la UI necesitas el repo [`navicat-ui`](https://github.com/ldchino-hub/navicat-ui) y seguir `app/deploy/README.md`.
-
-## Licencia
-
-MIT — ver [LICENSE](LICENSE).
-
-## Proyectos relacionados
-
-- [navicat-ui](https://github.com/ldchino-hub/navicat-ui) — interfaz compartida  
-- [navicat-web-1.0.0](https://github.com/ldchino-hub/navicat-web-1.0.0) — edición Node  
-- [navicat-php-1.0.0](https://github.com/ldchino-hub/navicat-php-1.0.0) — edición PHP standalone  
+Private — ldchino-hub

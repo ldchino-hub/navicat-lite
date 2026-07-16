@@ -1,22 +1,29 @@
 services:
-  navicat-lite:
+  dbtoolbox-lite:
     build:
       context: .
       dockerfile: Dockerfile
-    image: navicat-lite:1.2.3
-    container_name: Navicat-Lite
+    image: dbtoolbox-lite:1.0.0
+    container_name: DBToolBox-Lite
     restart: unless-stopped
     env_file:
       - .env
     volumes:
-      - navicat-lite-storage:/var/www/html/storage
+      - dbtoolbox-lite-storage:/var/www/html/storage
     ports:
-      - "${NAVICAT_LITE_PORT:-8789}:80"
+      - "${DBTOOLBOX_LITE_PORT:-8789}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1/api/health | grep -q '\"ok\":true'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
     networks:
       - navicat-net
 
 volumes:
-  navicat-lite-storage:
+  dbtoolbox-lite-storage:
+    name: dbtoolbox-lite-storage
 
 networks:
   navicat-net:

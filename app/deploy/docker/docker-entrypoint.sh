@@ -10,7 +10,7 @@ if [ ! -f "$CONFIG" ]; then
   cat > "$CONFIG" <<PHP
 <?php
 return [
-    'app_name' => 'DB Tool Box PHP',
+    'app_name' => 'DB Tool Box Lite',
     'debug' => false,
     'database_path' => '${APP_ROOT}/storage/database.sqlite',
     'meta_enc_key' => '${META_ENC_KEY}',

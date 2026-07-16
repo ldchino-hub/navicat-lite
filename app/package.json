@@ -1,5 +1,5 @@
 {
-  "name": "navicat-php",
+  "name": "dbtoolbox-lite",
   "private": true,
   "version": "1.0.0",
   "scripts": {
@@ -13,7 +13,6 @@
     "deploy:frontend": "bash scripts/deploy-ftp.sh frontend",
     "deploy:backend": "bash scripts/deploy-ftp.sh backend",
     "deploy:verify": "bash scripts/deploy-ftp.sh verify",
-    "scheduler:guardian": "php scripts/scheduler-guardian.php",
     "seed:admin": "php scripts/seed-admin.php",
     "import:mysql": "php scripts/import-mycnf.php",
     "import:pg": "php scripts/import-pgservice.php"

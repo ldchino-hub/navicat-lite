@@ -98,7 +98,7 @@ final class ConnectionRepository
 
             $meta = $entry['metaJson'] ?? $entry['meta_json'] ?? null;
             if (is_array($meta) && $meta !== []) {
-                App::db()->prepare("UPDATE connections SET meta_json = ?, updated_at = datetime('now') WHERE id = ?")
+                App::db()->prepare('UPDATE connections SET meta_json = ?, updated_at = ' . \Navicat\Database::nowSql() . ' WHERE id = ?')
                     ->execute([json_encode($meta), $conn['id']]);
             }
 
@@ -123,7 +123,7 @@ final class ConnectionRepository
         } else {
             $meta = json_decode((string)($conn['meta_json'] ?? '{}'), true) ?: [];
             unset($meta['sidebarGroupId']);
-            App::db()->prepare("UPDATE connections SET meta_json = ?, updated_at = datetime('now') WHERE id = ?")
+            App::db()->prepare('UPDATE connections SET meta_json = ?, updated_at = ' . \Navicat\Database::nowSql() . ' WHERE id = ?')
                 ->execute([json_encode($meta), $id]);
         }
         return self::toPublic(self::findOrFail($id));
@@ -256,7 +256,7 @@ final class ConnectionRepository
             $vals[] = json_encode($meta ?: new \stdClass());
         }
         if ($fields) {
-            $fields[] = "updated_at = datetime('now')";
+            $fields[] = 'updated_at = ' . \Navicat\Database::nowSql();
             $vals[] = $id;
             App::db()->prepare('UPDATE connections SET ' . implode(', ', $fields) . ' WHERE id = ?')->execute($vals);
         }
@@ -314,7 +314,7 @@ final class ConnectionRepository
         if (!$row) throw new \RuntimeException('Connection not found');
         $meta = json_decode((string)($row['meta_json'] ?? '{}'), true) ?: [];
         $meta = array_merge($meta, $patch);
-        App::db()->prepare("UPDATE connections SET meta_json = ?, updated_at = datetime('now') WHERE id = ?")
+        App::db()->prepare('UPDATE connections SET meta_json = ?, updated_at = ' . \Navicat\Database::nowSql() . ' WHERE id = ?')
             ->execute([json_encode($meta), $id]);
     }
 }

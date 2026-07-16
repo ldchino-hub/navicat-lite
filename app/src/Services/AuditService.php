@@ -13,7 +13,7 @@ final class AuditService
         try {
             App::db()->prepare(
                 'INSERT INTO audit_events (id, user_id, action, target, payload_json, created_at)
-                 VALUES (?, ?, ?, ?, ?, datetime(\'now\'))'
+                 VALUES (?, ?, ?, ?, ?, ' . \Navicat\Database::nowSql() . ')'
             )->execute([
                 Id::cuid(),
                 $userId,

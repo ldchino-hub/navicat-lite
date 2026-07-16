@@ -1,4 +1,4 @@
-# Navicat-Lite — DB Tool Box PHP v1.2.3 (mirrored from db.ldjr.me)
+# DB Tool Box Lite v1.0.0 — shared-hosting-friendly PHP edition
 FROM php:8.3-apache-bookworm
 
 RUN apt-get update \
@@ -22,11 +22,15 @@ COPY app/migrations/ migrations/
 COPY app/scripts/ scripts/
 COPY app/src/ src/
 COPY app/public/index.php app/public/.htaccess public/
+COPY app/public/check.php public/check.php
 COPY app/public/index.html public/index.html
 COPY app/public/assets public/assets
 
 COPY app/deploy/docker/docker-entrypoint.sh /docker-entrypoint.sh
+# Host umask/rsync can leave 600/700; Apache runs as www-data and must read the tree.
 RUN chmod +x /docker-entrypoint.sh \
+  && chmod -R a+rX /var/www/html \
+  && find /var/www/html -type d -exec chmod a+rx {} + \
   && mkdir -p storage/backups \
   && chown -R www-data:www-data storage
 

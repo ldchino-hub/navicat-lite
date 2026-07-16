@@ -86,7 +86,7 @@ $requestUri = $_SERVER['REQUEST_URI'] ?? '';
   </style>
 </head>
 <body>
-  <h1>DB Tool Box PHP — diagnóstico de deploy</h1>
+  <h1>DB Tool Box Lite — diagnóstico de deploy</h1>
 
   <?php if ($ok && $bootstrapOk): ?>
     <p class="ok"><b>Todo OK.</b> Si la app sigue en blanco, revisa la consola del navegador (F12) y prueba <code>/api/health</code>.</p>

@@ -13,14 +13,12 @@ use Navicat\Drivers\MySqlDriver;
 use Navicat\Drivers\PostgresDriver;
 use Navicat\Response;
 use Navicat\Services\AuditService;
-use Navicat\Services\UpdaterService;
 use Navicat\Services\BackupService;
 use Navicat\Services\DesignerService;
 use Navicat\Services\DiffService;
 use Navicat\Services\SchemaCache;
 use Navicat\Services\TransferService;
 use Navicat\Services\VpnService;
-use Navicat\Services\SchedulerService;
 use Navicat\Support\DbJobId;
 use Navicat\Util\Id;
 use PDO;
@@ -52,7 +50,9 @@ final class Router
     {
         try {
             if ($this->path === '/api/health' && $this->method === 'GET') {
-                Response::json(['ok' => true, 'version' => UpdaterService::currentVersion()]);
+                $versionFile = dirname(__DIR__, 2) . '/VERSION';
+                $version = is_file($versionFile) ? trim((string)file_get_contents($versionFile)) : '1.0.0';
+                Response::json(['ok' => true, 'version' => $version, 'edition' => 'lite']);
                 return;
             }
 
@@ -61,22 +61,14 @@ final class Router
                 return;
             }
             if (preg_match('#^/api/connections/[^/]+/logs#', $this->path)) {
-                $this->trySchedulerMaybeTick();
                 $this->dispatchConnectionLogs();
                 return;
             }
-            if (preg_match('#^/api/connections/[^/]+/query-store#', $this->path)) {
-                $this->trySchedulerMaybeTick();
-                $this->dispatchQueryStore();
-                return;
-            }
             if (preg_match('#^/api/connections/[^/]+/db-jobs#', $this->path)) {
-                $this->trySchedulerMaybeTick();
                 $this->dispatchDbJobs();
                 return;
             }
             if (str_starts_with($this->path, '/api/connections')) {
-                $this->trySchedulerMaybeTick();
                 $this->dispatchConnections();
                 return;
             }
@@ -124,15 +116,6 @@ final class Router
                 $this->dispatchQueries();
                 return;
             }
-            if (str_starts_with($this->path, '/api/scheduler')) {
-                $this->dispatchScheduler();
-                return;
-            }
-            if (str_starts_with($this->path, '/api/scheduled-jobs')) {
-                $this->trySchedulerMaybeTick();
-                $this->dispatchScheduledJobs();
-                return;
-            }
             if (str_starts_with($this->path, '/api/connection-groups')) {
                 $this->dispatchConnectionGroups();
                 return;
@@ -143,10 +126,6 @@ final class Router
             }
             if (str_starts_with($this->path, '/api/diff')) {
                 $this->dispatchDiff();
-                return;
-            }
-            if (str_starts_with($this->path, '/api/system')) {
-                $this->dispatchSystem();
                 return;
             }
             if (str_starts_with($this->path, '/api/history')) {
@@ -996,52 +975,6 @@ final class Router
         Response::error('Not found', 404);
     }
 
-    private function dispatchQueryStore(): void
-    {
-        $user = AuthService::requireUser();
-        if (!preg_match('#^/api/connections/([^/]+)/query-store#', $this->path, $m)) {
-            Response::error('Not found', 404);
-            return;
-        }
-        $access = AuthService::requireConnectionAccess($user, $m[1], 'viewer');
-        $driver = DriverFactory::getDriver($access['conn']);
-        $sub = preg_replace('#^/api/connections/[^/]+/query-store/?#', '', $this->path) ?: '';
-        $engine = (string)($access['conn']['engine'] ?? '');
-        $supportsQs = $driver instanceof MySqlDriver
-            || $driver instanceof PostgresDriver
-            || $driver instanceof MongoDriver;
-
-        if ($sub === 'status' && $this->method === 'GET') {
-            $available = false;
-            $source = null;
-            if ($supportsQs) {
-                $available = $driver->checkQueryStoreAvailable();
-                $sources = ['mysql' => 'performance_schema', 'postgres' => 'pg_stat_statements', 'mongodb' => 'system.profile'];
-                $source = $available ? ($sources[$engine] ?? null) : null;
-            }
-            Response::json([
-                'engine' => $engine,
-                'available' => $available,
-                'source' => $source,
-            ]);
-            return;
-        }
-        if ($sub === 'top' && $this->method === 'GET' && $supportsQs) {
-            $limit = min(100, max(1, (int)($this->query['limit'] ?? 25)));
-            Response::json(['queries' => $driver->getTopQueries($limit)]);
-            return;
-        }
-        if ($sub === 'reset' && $this->method === 'POST') {
-            AuthService::requireConnectionAccess($user, $m[1], 'dba');
-            if ($supportsQs) {
-                $driver->resetQueryStats();
-                Response::json(['ok' => true]);
-                return;
-            }
-        }
-        Response::error('Not found', 404);
-    }
-
     private function dispatchDbJobs(): void
     {
         $user = AuthService::requireUser();
@@ -1143,7 +1076,8 @@ final class Router
         if ($engine === 'mongodb') {
             return [
                 'engine' => 'mongodb',
-                'jobs' => $this->appJobsForConnection($conn['id'] ?? ''),
+                'jobs' => [],
+                'note' => 'MongoDB app jobs require the scheduler and are not available in Lite',
             ];
         }
         if ($engine === 'postgres') {
@@ -1161,44 +1095,12 @@ final class Router
         return ['engine' => $engine, 'jobs' => []];
     }
 
-    /** @return list<array<string,mixed>> */
-    private function appJobsForConnection(string $connectionId): array
-    {
-        $user = AuthService::requireUser();
-        $jobs = SchedulerService::listForUser((string)($user['id'] ?? ''));
-        $out = [];
-        foreach ($jobs as $j) {
-            $payload = (array)($j['payload'] ?? []);
-            if ((string)($payload['connectionId'] ?? '') !== $connectionId) {
-                continue;
-            }
-            $out[] = [
-                'jobId' => (string)($j['id'] ?? ''),
-                'name' => (string)($j['title'] ?? ''),
-                'database' => (string)($payload['database'] ?? ''),
-                'engine' => 'mongodb',
-                'jobType' => 'App Job',
-                'status' => !empty($j['enabled']) ? 'ENABLED' : 'DISABLED',
-                'enabled' => !empty($j['enabled']),
-                'schedule' => (string)($j['cronExpr'] ?? ''),
-                'lastExecuted' => $j['lastRunAt'] ?? null,
-                'definition' => json_encode($payload, JSON_UNESCAPED_UNICODE),
-            ];
-        }
-        return $out;
-    }
-
     /** @return array<string,mixed> */
     private function dbJobDetail(array $conn, string $jobId): array
     {
         $engine = (string)($conn['engine'] ?? '');
         if ($engine === 'mongodb') {
-            foreach ($this->appJobsForConnection($conn['id'] ?? '') as $j) {
-                if (($j['jobId'] ?? '') === $jobId) {
-                    return $j;
-                }
-            }
-            Response::error('Job not found', 404);
+            Response::error('MongoDB app jobs are not available in Lite', 501);
             return [];
         }
         if ($engine === 'postgres') {
@@ -1246,7 +1148,7 @@ final class Router
     {
         $engine = (string)($conn['engine'] ?? '');
         if ($engine === 'mongodb') {
-            SchedulerService::runNow((string)($user['id'] ?? ''), $jobId);
+            Response::error('MongoDB app jobs are not available in Lite', 501);
             return;
         }
         Response::error('Run now not supported for this engine yet', 501);
@@ -1256,15 +1158,8 @@ final class Router
     {
         $engine = (string)($conn['engine'] ?? '');
         if ($engine === 'mongodb') {
-            $enabled = $action === 'enable';
-            if ($action === 'drop') {
-                SchedulerService::delete((string)(AuthService::requireUser()['id'] ?? ''), $jobId);
-                return;
-            }
-            if ($action === 'enable' || $action === 'disable') {
-                SchedulerService::update((string)(AuthService::requireUser()['id'] ?? ''), $jobId, ['enabled' => $enabled]);
-                return;
-            }
+            Response::error('MongoDB app jobs are not available in Lite', 501);
+            return;
         }
         if ($engine === 'postgres') {
             $decoded = DbJobId::decode($jobId);
@@ -1309,9 +1204,7 @@ final class Router
     {
         $engine = (string)($conn['engine'] ?? '');
         if ($engine === 'mongodb') {
-            $uid = (string)(AuthService::requireUser()['id'] ?? '');
-            $runs = SchedulerService::listRuns($uid, $jobId, 50);
-            return ['engine' => 'mongodb', 'history' => $runs];
+            return ['engine' => 'mongodb', 'history' => [], 'note' => 'MongoDB app jobs are not available in Lite'];
         }
         if ($engine === 'postgres') {
             $decoded = DbJobId::decode($jobId);
@@ -1957,13 +1850,13 @@ final class Router
             $size = is_file($filePath) ? filesize($filePath) : 0;
             $sha256 = is_file($filePath) ? hash_file('sha256', $filePath) : null;
             App::db()->prepare(
-                "UPDATE backups SET status = 'completed', size_bytes = ?, sha256 = ?, finished_at = datetime('now') WHERE id = ?"
+                'UPDATE backups SET status = \'completed\', size_bytes = ?, sha256 = ?, finished_at = ' . \Navicat\Database::nowSql() . ' WHERE id = ?'
             )->execute([$size, $sha256, $backupId]);
             AuditService::log($userId, 'backup.run', $conn['name'] ?? '', ['database' => $database, 'filePath' => basename($filePath)]);
             Response::sse(['type' => 'done', 'message' => $filePath]);
         } catch (\Throwable $e) {
             App::db()->prepare(
-                "UPDATE backups SET status = 'failed', error = ?, finished_at = datetime('now') WHERE id = ?"
+                'UPDATE backups SET status = \'failed\', error = ?, finished_at = ' . \Navicat\Database::nowSql() . ' WHERE id = ?'
             )->execute([$e->getMessage(), $backupId]);
             throw $e;
         }
@@ -2066,7 +1959,7 @@ final class Router
                 $fields[] = 'sql_text = ?';
                 $values[] = $sql;
             }
-            $fields[] = 'updated_at = datetime(\'now\')';
+            $fields[] = 'updated_at = ' . \Navicat\Database::nowSql();
             $values[] = $paramId;
             App::db()->prepare('UPDATE saved_queries SET ' . implode(', ', $fields) . ' WHERE id = ?')->execute($values);
 
@@ -2372,147 +2265,4 @@ final class Router
         Response::error('Not found', 404);
     }
 
-    private function dispatchSystem(): void
-    {
-        // GET /api/system/version  — returns current + remote version info (admin only)
-        if ($this->path === '/api/system/version' && $this->method === 'GET') {
-            AuthService::requireAdmin();
-            Response::json(UpdaterService::checkForUpdates());
-            return;
-        }
-
-        // POST /api/system/update  — streams SSE log of git pull + migrations (admin only)
-        if ($this->path === '/api/system/update' && $this->method === 'POST') {
-            AuthService::requireAdmin();
-            Response::sseStart();
-            UpdaterService::runUpdate(function (array $event): void {
-                Response::sse($event);
-            });
-            return;
-        }
-
-        Response::error('Not found', 404);
-    }
-
-    private function dispatchScheduledJobs(): void
-    {
-        $user = AuthService::requireUser();
-        $userId = (string)$user['id'];
-
-        if ($this->path === '/api/scheduled-jobs' && $this->method === 'GET') {
-            Response::json(['jobs' => SchedulerService::listForUser($userId)]);
-            return;
-        }
-
-        if ($this->path === '/api/scheduled-jobs' && $this->method === 'POST') {
-            try {
-                Response::json(SchedulerService::create($userId, $this->body));
-            } catch (\InvalidArgumentException $e) {
-                Response::error($e->getMessage(), 400);
-            }
-            return;
-        }
-
-        if (preg_match('#^/api/scheduled-jobs/([^/]+)/runs$#', $this->path, $m) && $this->method === 'GET') {
-            $limit = max(1, min(100, (int)($this->query['limit'] ?? 20)));
-            try {
-                Response::json(['runs' => SchedulerService::listRuns($userId, $m[1], $limit)]);
-            } catch (\RuntimeException $e) {
-                Response::error($e->getMessage(), 404);
-            }
-            return;
-        }
-
-        if (preg_match('#^/api/scheduled-jobs/([^/]+)/run-now$#', $this->path, $m) && $this->method === 'POST') {
-            try {
-                Response::json(SchedulerService::runNow($userId, $m[1]));
-            } catch (\Throwable $e) {
-                Response::error($e->getMessage(), 500);
-            }
-            return;
-        }
-
-        if (preg_match('#^/api/scheduled-jobs/([^/]+)$#', $this->path, $m)) {
-            $jobId = $m[1];
-            if ($this->method === 'PUT') {
-                try {
-                    Response::json(SchedulerService::update($userId, $jobId, $this->body));
-                } catch (\InvalidArgumentException $e) {
-                    Response::error($e->getMessage(), 400);
-                } catch (\RuntimeException $e) {
-                    Response::error($e->getMessage(), 404);
-                }
-                return;
-            }
-            if ($this->method === 'DELETE') {
-                try {
-                    SchedulerService::delete($userId, $jobId);
-                    Response::json(['ok' => true]);
-                } catch (\RuntimeException $e) {
-                    Response::error($e->getMessage(), 404);
-                }
-                return;
-            }
-        }
-
-        Response::error('Not found', 404);
-    }
-
-    private function trySchedulerMaybeTick(): void
-    {
-        if ($this->path === '/api/scheduler/heartbeat') {
-            return;
-        }
-        try {
-            SchedulerService::maybeTick('api');
-        } catch (\Throwable) {
-            // migrations may not be applied yet
-        }
-    }
-
-    private function dispatchScheduler(): void
-    {
-        AuthService::requireUser();
-
-        if ($this->path === '/api/scheduler/status' && $this->method === 'GET') {
-            Response::json(SchedulerService::getStatus());
-            return;
-        }
-
-        if ($this->path === '/api/scheduler/heartbeat' && $this->method === 'GET') {
-            @set_time_limit(0);
-            ignore_user_abort(false);
-            Response::sseStart();
-
-            $interval = SchedulerService::tickIntervalSeconds();
-
-            while (!connection_aborted()) {
-                $result = SchedulerService::tick('heartbeat');
-                $payload = [
-                    'type' => 'tick',
-                    'ran' => $result['ran'],
-                    'skipped' => $result['skipped'],
-                    'timestamp' => gmdate('Y-m-d\TH:i:s\Z'),
-                ];
-                if (connection_aborted()) {
-                    break;
-                }
-                Response::sse($payload);
-
-                $slept = 0;
-                while ($slept < $interval && !connection_aborted()) {
-                    sleep(min(5, $interval - $slept));
-                    $slept += 5;
-                }
-            }
-            exit;
-        }
-
-        if ($this->path === '/api/scheduler/tick' && $this->method === 'POST') {
-            Response::json(SchedulerService::tick('manual'));
-            return;
-        }
-
-        Response::error('Not found', 404);
-    }
 }
