@@ -1,0 +1,52 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  darkMode: 'class',
+  content: [
+    './index.html',
+    './src/**/*.{js,ts,jsx,tsx}',
+    '../../navicat-ui/src/**/*.{js,ts,jsx,tsx}',
+  ],
+  theme: {
+    extend: {
+      colors: {
+        nv: {
+          bg: 'var(--nv-bg)',
+          panel: 'var(--nv-panel)',
+          sidebar: 'var(--nv-sidebar)',
+          tree: 'var(--nv-tree)',
+          toolbar: 'var(--nv-toolbar)',
+          border: 'var(--nv-border)',
+          borderLight: 'var(--nv-borderLight)',
+          hover: 'var(--nv-hover)',
+          selected: 'var(--nv-selected)',
+          text: 'var(--nv-text)',
+          textSubtle: 'var(--nv-textSubtle)',
+          textMuted: 'var(--nv-textMuted)',
+          accent: 'var(--nv-accent)',
+          accentDark: 'var(--nv-accentDark)',
+          gridHeader: 'var(--nv-gridHeader)',
+          gridAlt: 'var(--nv-gridAlt)',
+          mysql: '#f29111',
+          postgres: '#336791',
+          db: '#d4a017',
+          table: '#5b8ebd',
+          view: '#7d6db5',
+          fn: '#5fa15f',
+          query: '#9b8c1f',
+          backup: '#c44a4a',
+          model: '#3a8ee6',
+          success: '#52a851',
+          warning: '#f59e0b',
+          danger: '#dc2626',
+          selectedBorder: '#3a8ee6',
+        },
+      },
+      fontFamily: {
+        sans: ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+        mono: ['SF Mono', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+      },
+      fontSize: { '2xs': '10px', xs: '11px', sm: '12px', base: '13px' },
+    },
+  },
+  plugins: [],
+};

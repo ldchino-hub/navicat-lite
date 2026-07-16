@@ -1,0 +1,24 @@
+services:
+  navicat-php:
+    build:
+      context: ../../..
+      dockerfile: navicat-php-1.0.0/deploy/docker/Dockerfile
+    image: navicat-php:1.0.0
+    container_name: navicat-php
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - navicat-php-storage:/var/www/html/storage
+    ports:
+      - "${NAVICAT_PHP_PORT:-8788}:80"
+    networks:
+      - navicat-net
+
+volumes:
+  navicat-php-storage:
+
+networks:
+  navicat-net:
+    external: true
+    name: navicat-net

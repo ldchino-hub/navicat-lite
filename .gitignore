@@ -1,0 +1,36 @@
+# secrets / local env
+.env
+.env.*
+!.env.example
+app/config/config.php
+app/config/config.local.php
+**/config.docker.php
+
+# dependencies / build caches
+node_modules/
+app/frontend/node_modules/
+app/frontend/tsconfig.tsbuildinfo
+**/vendor/
+composer.lock
+
+# runtime / storage
+app/storage/
+**/storage/*.sqlite
+**/storage/*.sqlite-*
+**/storage/backups/
+**/storage/cache/
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# logs / QA artifacts
+*.log
+.npm/
+coverage/
+playwright-report/
+test-results/
+download/

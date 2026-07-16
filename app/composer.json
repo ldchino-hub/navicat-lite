@@ -1,0 +1,13 @@
+{
+  "name": "navicat/php-edition",
+  "description": "DB Tool Box — PHP hosting edition",
+  "type": "project",
+  "require": {
+    "php": ">=8.1"
+  },
+  "autoload": {
+    "psr-4": {
+      "Navicat\\": "src/"
+    }
+  }
+}

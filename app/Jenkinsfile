@@ -1,0 +1,154 @@
+pipeline {
+  agent any
+
+  parameters {
+    choice(
+      name: 'DEPLOY_MODE',
+      choices: ['frontend', 'backend', 'full', 'verify'],
+      description: 'frontend = UI only | backend = PHP only | full = everything | verify = no upload'
+    )
+    choice(
+      name: 'GIT_BRANCH',
+      choices: ['main'],
+      description: 'Branch to deploy from GitHub'
+    )
+    string(
+      name: 'NAVICAT_UI_GIT_URL',
+      defaultValue: 'git@github.com:ldchino-hub/navicat-ui.git',
+      description: 'Shared UI repo for frontend build (empty = skip UI build, use existing public/ if any)'
+    )
+    booleanParam(
+      name: 'BUILD_FRONTEND',
+      defaultValue: false,
+      description: 'npm build before frontend/full (requires navicat-ui on GitHub)'
+    )
+    booleanParam(
+      name: 'UPLOAD_CONFIG',
+      defaultValue: false,
+      description: 'Upload config/config.php (overwrites server secrets)'
+    )
+    booleanParam(
+      name: 'UPLOAD_CHECK',
+      defaultValue: false,
+      description: 'Upload public/check.php diagnostic'
+    )
+  }
+
+  environment {
+    PATH = "/Users/luisjimenez/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${env.PATH}"
+    GIT_REPO = 'git@github.com:ldchino-hub/navicat-php-1.0.0.git'
+    FTP_CREDENTIALS_ID = 'db-ldjr-ftp-pass'
+    DEPLOY_URL = 'https://db.ldjr.me'
+    FTP_HOST = 'ldjr.me'
+    FTP_USER = 'db@ldjr.me'
+  }
+
+  stages {
+    stage('Checkout (GitHub)') {
+      steps {
+        checkout([
+          $class: 'GitSCM',
+          branches: [[name: "*/${params.GIT_BRANCH}"]],
+          userRemoteConfigs: [[
+            url: "${env.GIT_REPO}",
+            credentialsId: 'github-ldchino-ssh'
+          ]],
+          extensions: [[$class: 'CloneOption', shallow: true, depth: 1, noTags: true]]
+        ])
+        sh 'git rev-parse --short HEAD && git log -1 --oneline'
+      }
+    }
+
+    stage('Checkout navicat-ui') {
+      when {
+        expression {
+          params.BUILD_FRONTEND
+            && params.DEPLOY_MODE in ['frontend', 'full']
+            && params.NAVICAT_UI_GIT_URL?.trim()
+        }
+      }
+      steps {
+        dir("${env.WORKSPACE}/..") {
+          sh '''
+            set -euo pipefail
+            UI_DIR="navicat-ui"
+            REPO="''' + params.NAVICAT_UI_GIT_URL.trim().replace("'", "'\\''") + '''"
+            if [[ -d "$UI_DIR/.git" ]]; then
+              git -C "$UI_DIR" fetch --depth 1 origin main
+              git -C "$UI_DIR" checkout -f main
+              git -C "$UI_DIR" reset --hard origin/main
+            else
+              rm -rf "$UI_DIR"
+              git clone --depth 1 -b main "$REPO" "$UI_DIR"
+            fi
+          '''
+        }
+      }
+    }
+
+    stage('Build frontend') {
+      when {
+        expression {
+          params.BUILD_FRONTEND && params.DEPLOY_MODE in ['frontend', 'full']
+        }
+      }
+      steps {
+        sh '''
+          set -euo pipefail
+          if [[ ! -d ../navicat-ui/src ]]; then
+            echo "navicat-ui not found — publish navicat-ui to GitHub or clear NAVICAT_UI_GIT_URL and disable BUILD_FRONTEND"
+            exit 1
+          fi
+          npm --prefix frontend ci --silent
+          npm run build:frontend --silent
+        '''
+      }
+    }
+
+    stage('Deploy to db.ldjr.me') {
+      steps {
+        script {
+          def uploadConfig = params.UPLOAD_CONFIG ? '1' : '0'
+          def uploadCheck = params.UPLOAD_CHECK ? '1' : '0'
+          def skipBuild = (
+            !params.BUILD_FRONTEND
+            || !params.NAVICAT_UI_GIT_URL?.trim()
+            || !(params.DEPLOY_MODE in ['frontend', 'full'])
+          ) ? '1' : '0'
+
+          def runDeploy = {
+            sh """
+              set -euo pipefail
+              export DEPLOY_UPLOAD_CONFIG=${uploadConfig}
+              export DEPLOY_UPLOAD_CHECK=${uploadCheck}
+              export DEPLOY_SKIP_BUILD=${skipBuild}
+              bash scripts/deploy-ftp.sh ${params.DEPLOY_MODE}
+            """
+          }
+
+          if (fileExists('deploy/ftp.env')) {
+            sh '''
+              set -euo pipefail
+              set -a
+              source deploy/ftp.env
+              set +a
+              export DEPLOY_UPLOAD_CONFIG=''' + uploadConfig + '''
+              export DEPLOY_UPLOAD_CHECK=''' + uploadCheck + '''
+              export DEPLOY_SKIP_BUILD=''' + skipBuild + '''
+              bash scripts/deploy-ftp.sh ''' + params.DEPLOY_MODE + '''
+            '''
+          } else {
+            withCredentials([string(credentialsId: "${env.FTP_CREDENTIALS_ID}", variable: 'FTP_PASS')]) {
+              runDeploy()
+            }
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    success { echo "Deploy OK — ${params.DEPLOY_MODE} from GitHub (${params.GIT_BRANCH})" }
+    failure { echo 'Deploy failed — see console output' }
+  }
+}

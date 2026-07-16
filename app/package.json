@@ -1,0 +1,20 @@
+{
+  "name": "dbtoolbox-lite",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "setup:ui": "npm --prefix ../navicat-ui install",
+    "setup:frontend": "npm run setup:ui && npm --prefix frontend install",
+    "dev": "npm run dev:backend & npm run dev:frontend",
+    "dev:backend": "php -S 127.0.0.1:8081 -t public public/index.php",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build:frontend": "npm --prefix frontend run build",
+    "deploy": "bash scripts/deploy-ftp.sh full",
+    "deploy:frontend": "bash scripts/deploy-ftp.sh frontend",
+    "deploy:backend": "bash scripts/deploy-ftp.sh backend",
+    "deploy:verify": "bash scripts/deploy-ftp.sh verify",
+    "seed:admin": "php scripts/seed-admin.php",
+    "import:mysql": "php scripts/import-mycnf.php",
+    "import:pg": "php scripts/import-pgservice.php"
+  }
+}
