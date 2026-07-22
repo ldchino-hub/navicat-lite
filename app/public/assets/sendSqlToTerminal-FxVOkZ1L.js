@@ -1,2 +1,0 @@
-import{useTerminalStore,notify}from"./bundle-kPA8OQo7.js";function sendSqlToTerminal(payload){const sql=String(payload.sql??"").trim();return!sql||!payload.connectionId?!1:(useTerminalStore.getState().openTerminal({connectionId:payload.connectionId,database:payload.database??null,sql,autoRun:!!payload.autoRun}),payload.notifyMessage!==!1&&notify(payload.notifyMessage??"SQL enviado al Terminal — panel expandido"),!0)}export{sendSqlToTerminal};
-//# sourceMappingURL=sendSqlToTerminal-FxVOkZ1L.js.map
