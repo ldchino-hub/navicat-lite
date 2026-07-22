@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: dbtoolbox-lite:1.0.0
+    image: dbtoolbox-lite:1.0.1
     container_name: DBToolBox-Lite
     restart: unless-stopped
     env_file:
