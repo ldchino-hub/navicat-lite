@@ -568,6 +568,33 @@ final class Router
             return;
         }
 
+        if (preg_match('#^/api/connections/([^/]+)/databases/([^/]+)/objects/([^/]+)/([^/]+)/clone$#', $this->path, $m) && $this->method === 'POST') {
+            $access = AuthService::requireConnectionAccess($user, $m[1], 'editor');
+            $db = rawurldecode($m[2]);
+            $type = strtolower(rawurldecode($m[3]));
+            $name = rawurldecode($m[4]);
+            $targetDb = trim((string)($this->body['targetDb'] ?? ''));
+            $newName = trim((string)($this->body['newName'] ?? ''));
+            $copyData = !empty($this->body['copyData']);
+            if ($targetDb === '' || $newName === '') {
+                Response::error('targetDb and newName are required', 400);
+                return;
+            }
+            if ($targetDb === $db && $newName === $name) {
+                Response::error('newName must differ when cloning into the same database', 400);
+                return;
+            }
+            try {
+                $result = DriverFactory::getDriver($access['conn'])->cloneObject($db, $type, $name, $targetDb, $newName, $copyData);
+                SchemaCache::invalidate($m[1]);
+                AuditService::log($user['id'] ?? null, 'object.clone', "{$type} {$db}.{$name} -> {$targetDb}.{$newName}");
+                Response::json($result);
+            } catch (\Throwable $e) {
+                Response::error($e->getMessage(), (int)($e->getCode()) ?: 400);
+            }
+            return;
+        }
+
         Response::error('Not found', 404);
     }
 

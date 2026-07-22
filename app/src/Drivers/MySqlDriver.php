@@ -252,6 +252,34 @@ final class MySqlDriver
         };
     }
 
+    /** Clone an object definition (and optionally table data) into another
+     *  database on the same MySQL server. Driver-aware name rewrite on the DDL. */
+    public function cloneObject(string $sourceDb, string $type, string $name, string $targetDb, string $newName, bool $copyData = false): array
+    {
+        $t = strtolower($type);
+        $ddl = $this->getObjectDdl($sourceDb, $t, $name);
+        $rewritten = $this->rewriteObjectName($ddl, $name, $newName);
+        $this->executeDDL($rewritten, $targetDb);
+        if ($t === 'table' && $copyData) {
+            $src = $this->quoteIdent($sourceDb) . '.' . $this->quoteIdent($name);
+            $dst = $this->quoteIdent($targetDb) . '.' . $this->quoteIdent($newName);
+            $this->withConn(null, static function (PDO $pdo) use ($src, $dst): void {
+                $pdo->exec("INSERT INTO {$dst} SELECT * FROM {$src}");
+            });
+        }
+        return ['ok' => true, 'type' => $t, 'newName' => $newName, 'targetDb' => $targetDb];
+    }
+
+    /** Replace the first occurrence of the (quoted or bare) object name in the DDL. */
+    private function rewriteObjectName(string $ddl, string $old, string $new): string
+    {
+        $quoted = '/`' . preg_quote($old, '/') . '`/';
+        if (preg_match($quoted, $ddl)) {
+            return preg_replace($quoted, '`' . str_replace('`', '``', $new) . '`', $ddl, 1);
+        }
+        return preg_replace('/\b' . preg_quote($old, '/') . '\b/', $new, $ddl, 1);
+    }
+
     /** @return array<string,mixed> */
     public function getTableInfo(string $database, string $table): array
     {

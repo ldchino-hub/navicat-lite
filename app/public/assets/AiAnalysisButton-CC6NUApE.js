@@ -1,0 +1,2 @@
+import{reactExports}from"./index-CPweoZaJ.js";import"./bundle-kPA8OQo7.js";function AiAnalysisButton({connectionId,kind,params={},identifier="",engine="",database,title:modalTitle,label="AI Analysis",titleAttr="Analizar con IA (diagnóstico y recomendaciones)",className="nv-btn !py-0.5 !text-2xs text-violet-300 border-violet-800/60 hover:bg-violet-950/40",iconSize=10,width,disabled=!1}){const[open,setOpen]=reactExports.useState(!1);return null}export{AiAnalysisButton};
+//# sourceMappingURL=AiAnalysisButton-CC6NUApE.js.map

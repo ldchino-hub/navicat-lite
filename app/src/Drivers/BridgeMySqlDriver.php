@@ -114,6 +114,37 @@ final class BridgeMySqlDriver
         return (string)$this->rpc('getObjectDdl', [$database, $type, $name]);
     }
 
+    /** Clone an object definition (and optionally table data) into another
+     *  database on the same MySQL server, via the bridge RPC. */
+    public function cloneObject(string $sourceDb, string $type, string $name, string $targetDb, string $newName, bool $copyData = false): array
+    {
+        $t = strtolower($type);
+        $ddl = $this->getObjectDdl($sourceDb, $t, $name);
+        $rewritten = $this->rewriteObjectName($ddl, $name, $newName);
+        $this->executeDDL($rewritten, $targetDb);
+        if ($t === 'table' && $copyData) {
+            $src = $this->quoteIdent($sourceDb) . '.' . $this->quoteIdent($name);
+            $dst = $this->quoteIdent($targetDb) . '.' . $this->quoteIdent($newName);
+            $this->execute("INSERT INTO {$dst} SELECT * FROM {$src}", null);
+        }
+        return ['ok' => true, 'type' => $t, 'newName' => $newName, 'targetDb' => $targetDb];
+    }
+
+    /** Replace the first occurrence of the (quoted or bare) object name in the DDL. */
+    private function rewriteObjectName(string $ddl, string $old, string $new): string
+    {
+        $quoted = '/`' . preg_quote($old, '/') . '`/';
+        if (preg_match($quoted, $ddl)) {
+            return preg_replace($quoted, '`' . str_replace('`', '``', $new) . '`', $ddl, 1);
+        }
+        return preg_replace('/\b' . preg_quote($old, '/') . '\b/', $new, $ddl, 1);
+    }
+
+    private function quoteIdent(string $name): string
+    {
+        return '`' . str_replace('`', '``', $name) . '`';
+    }
+
     /** @return array<string,mixed> */
     public function getTableInfo(string $database, string $table): array
     {

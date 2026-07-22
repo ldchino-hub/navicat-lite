@@ -243,6 +243,42 @@ final class PostgresDriver
         };
     }
 
+    /** Clone an object definition into another database within the same
+     *  PostgreSQL connection. Cross-database row copy is not supported by PG
+     *  (a single connection cannot reference two databases); copyData only
+     *  works when sourceDb === targetDb. */
+    public function cloneObject(string $sourceDb, string $type, string $name, string $targetDb, string $newName, bool $copyData = false): array
+    {
+        $t = strtolower($type);
+        $ddl = $this->getObjectDdl($sourceDb, $t, $name);
+        $rewritten = $this->rewriteObjectName($ddl, $name, $newName);
+        $this->executeDDL($rewritten, $targetDb);
+        if ($t === 'table' && $copyData) {
+            if ($sourceDb !== $targetDb) {
+                throw new \RuntimeException(
+                    'Cross-database data copy is not supported for PostgreSQL. Clone the definition only, or copy data within the same database.',
+                    400
+                );
+            }
+            $src = 'public.' . $this->quoteIdent($name);
+            $dst = 'public.' . $this->quoteIdent($newName);
+            $this->withConn($targetDb, static function (PDO $pdo) use ($src, $dst): void {
+                $pdo->exec("INSERT INTO {$dst} SELECT * FROM {$src}");
+            });
+        }
+        return ['ok' => true, 'type' => $t, 'newName' => $newName, 'targetDb' => $targetDb];
+    }
+
+    /** Replace the first occurrence of the (quoted or bare) object name in the DDL. */
+    private function rewriteObjectName(string $ddl, string $old, string $new): string
+    {
+        $quoted = '/"' . preg_quote($old, '/') . '"/';
+        if (preg_match($quoted, $ddl)) {
+            return preg_replace($quoted, '"' . str_replace('"', '""', $new) . '"', $ddl, 1);
+        }
+        return preg_replace('/\b' . preg_quote($old, '/') . '\b/', $new, $ddl, 1);
+    }
+
     /** @return list<string> pg_proc oids as strings */
     private function postgresRoutineOids(PDO $pdo, string $name): array
     {

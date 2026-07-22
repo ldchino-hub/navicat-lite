@@ -1,0 +1,2 @@
+import{create_1}from"./bundle-kPA8OQo7.js";const useQueryStoreNavStore=create_1((set,get)=>({loadToken:0,payload:null,openQuery:payload=>{set({loadToken:get().loadToken+1,payload:{connectionId:payload.connectionId,sqlText:String(payload.sqlText??"").trim(),queryId:payload.queryId?String(payload.queryId):null}})}}));export{useQueryStoreNavStore};
+//# sourceMappingURL=query-store-nav-DPvriT5M.js.map

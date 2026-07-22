@@ -197,6 +197,12 @@ final class MongoDriver
         throw new \RuntimeException('Object type not applicable to MongoDB: ' . $type, 400);
     }
 
+    /** MongoDB has no DDL to clone across databases in this form. */
+    public function cloneObject(string $sourceDb, string $type, string $name, string $targetDb, string $newName, bool $copyData = false): array
+    {
+        throw new \RuntimeException('Cloning object definitions is not supported for MongoDB', 400);
+    }
+
     // ---- schema (inferred) -------------------------------------------------
 
     /** @return array<string,mixed> */
