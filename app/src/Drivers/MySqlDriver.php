@@ -259,7 +259,25 @@ final class MySqlDriver
         $t = strtolower($type);
         $ddl = $this->getObjectDdl($sourceDb, $t, $name);
         $rewritten = $this->rewriteObjectName($ddl, $name, $newName);
-        $this->executeDDL($rewritten, $targetDb);
+        // FK/CHECK constraint names are unique per schema — rename them so cloning
+        // into the same (or another) database does not hit errno 1826.
+        if ($t === 'table') {
+            $rewritten = $this->uniquifyConstraintNames($rewritten, $newName);
+        }
+        try {
+            $this->executeDDL($rewritten, $targetDb);
+        } catch (\Throwable $e) {
+            $msg = $e->getMessage();
+            if (preg_match('/duplicate.*(?:foreign key|constraint)/i', $msg) || str_contains($msg, '1826')) {
+                throw new \RuntimeException(
+                    "Clone failed: a foreign key / constraint name from \"{$name}\" already exists in \"{$targetDb}\". "
+                    . "Constraint names were rewritten for \"{$newName}\"; if this persists, rename conflicting constraints on the source table. "
+                    . "Original error: {$msg}",
+                    400
+                );
+            }
+            throw $e;
+        }
         if ($t === 'table' && $copyData) {
             $src = $this->quoteIdent($sourceDb) . '.' . $this->quoteIdent($name);
             $dst = $this->quoteIdent($targetDb) . '.' . $this->quoteIdent($newName);
@@ -278,6 +296,35 @@ final class MySqlDriver
             return preg_replace($quoted, '`' . str_replace('`', '``', $new) . '`', $ddl, 1);
         }
         return preg_replace('/\b' . preg_quote($old, '/') . '\b/', $new, $ddl, 1);
+    }
+
+    /** Prefix CONSTRAINT names with the new table name (MySQL identifiers ≤ 64 chars).
+     *  Leaves PRIMARY alone. Index/KEY names stay as-is (unique per table only). */
+    private function uniquifyConstraintNames(string $ddl, string $tableName): string
+    {
+        $out = preg_replace_callback(
+            '/\bCONSTRAINT\s+`((?:[^`]|``)+)`/i',
+            static function (array $m) use ($tableName): string {
+                $old = str_replace('``', '`', $m[1]);
+                if (strcasecmp($old, 'PRIMARY') === 0) {
+                    return $m[0];
+                }
+                // Avoid double-prefix if already rewritten.
+                $prefix = $tableName . '_';
+                $base = str_starts_with($old, $prefix) ? $old : ($prefix . $old);
+                if (strlen($base) > 64) {
+                    $hash = substr(sha1($old), 0, 8);
+                    $keep = max(1, 64 - 1 - strlen($hash));
+                    $base = substr($tableName, 0, $keep) . '_' . $hash;
+                    if (strlen($base) > 64) {
+                        $base = substr($base, 0, 64);
+                    }
+                }
+                return 'CONSTRAINT `' . str_replace('`', '``', $base) . '`';
+            },
+            $ddl
+        );
+        return is_string($out) ? $out : $ddl;
     }
 
     /** @return array<string,mixed> */

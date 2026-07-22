@@ -252,7 +252,22 @@ final class PostgresDriver
         $t = strtolower($type);
         $ddl = $this->getObjectDdl($sourceDb, $t, $name);
         $rewritten = $this->rewriteObjectName($ddl, $name, $newName);
-        $this->executeDDL($rewritten, $targetDb);
+        if ($t === 'table') {
+            $rewritten = $this->uniquifyConstraintNames($rewritten, $newName);
+        }
+        try {
+            $this->executeDDL($rewritten, $targetDb);
+        } catch (\Throwable $e) {
+            $msg = $e->getMessage();
+            if (preg_match('/already exists|duplicate/i', $msg) && preg_match('/constraint/i', $msg)) {
+                throw new \RuntimeException(
+                    "Clone failed: a constraint name from \"{$name}\" already exists in \"{$targetDb}\". "
+                    . "Constraint names were rewritten for \"{$newName}\". Original error: {$msg}",
+                    400
+                );
+            }
+            throw $e;
+        }
         if ($t === 'table' && $copyData) {
             if ($sourceDb !== $targetDb) {
                 throw new \RuntimeException(
@@ -277,6 +292,42 @@ final class PostgresDriver
             return preg_replace($quoted, '"' . str_replace('"', '""', $new) . '"', $ddl, 1);
         }
         return preg_replace('/\b' . preg_quote($old, '/') . '\b/', $new, $ddl, 1);
+    }
+
+    /** Prefix CONSTRAINT names with the new table name (PostgreSQL identifiers ≤ 63 chars). */
+    private function uniquifyConstraintNames(string $ddl, string $tableName): string
+    {
+        $out = preg_replace_callback(
+            '/\bCONSTRAINT\s+(?:("(?:[^"]|"")+")|([A-Za-z_][A-Za-z0-9_\$]*))/i',
+            static function (array $m) use ($tableName): string {
+                if (!empty($m[1])) {
+                    $old = str_replace('""', '"', substr($m[1], 1, -1));
+                    $forceQuote = true;
+                } else {
+                    $old = $m[2];
+                    $forceQuote = false;
+                }
+                if (strcasecmp($old, 'PRIMARY') === 0) {
+                    return $m[0];
+                }
+                $prefix = $tableName . '_';
+                $base = str_starts_with($old, $prefix) ? $old : ($prefix . $old);
+                if (strlen($base) > 63) {
+                    $hash = substr(sha1($old), 0, 8);
+                    $keep = max(1, 63 - 1 - strlen($hash));
+                    $base = substr($tableName, 0, $keep) . '_' . $hash;
+                    if (strlen($base) > 63) {
+                        $base = substr($base, 0, 63);
+                    }
+                }
+                if ($forceQuote || preg_match('/[^a-z0-9_]/', $base)) {
+                    return 'CONSTRAINT "' . str_replace('"', '""', $base) . '"';
+                }
+                return 'CONSTRAINT ' . $base;
+            },
+            $ddl
+        );
+        return is_string($out) ? $out : $ddl;
     }
 
     /** @return list<string> pg_proc oids as strings */

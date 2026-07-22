@@ -121,7 +121,23 @@ final class BridgeMySqlDriver
         $t = strtolower($type);
         $ddl = $this->getObjectDdl($sourceDb, $t, $name);
         $rewritten = $this->rewriteObjectName($ddl, $name, $newName);
-        $this->executeDDL($rewritten, $targetDb);
+        if ($t === 'table') {
+            $rewritten = $this->uniquifyConstraintNames($rewritten, $newName);
+        }
+        try {
+            $this->executeDDL($rewritten, $targetDb);
+        } catch (\Throwable $e) {
+            $msg = $e->getMessage();
+            if (preg_match('/duplicate.*(?:foreign key|constraint)/i', $msg) || str_contains($msg, '1826')) {
+                throw new \RuntimeException(
+                    "Clone failed: a foreign key / constraint name from \"{$name}\" already exists in \"{$targetDb}\". "
+                    . "Constraint names were rewritten for \"{$newName}\"; if this persists, rename conflicting constraints on the source table. "
+                    . "Original error: {$msg}",
+                    400
+                );
+            }
+            throw $e;
+        }
         if ($t === 'table' && $copyData) {
             $src = $this->quoteIdent($sourceDb) . '.' . $this->quoteIdent($name);
             $dst = $this->quoteIdent($targetDb) . '.' . $this->quoteIdent($newName);
@@ -138,6 +154,100 @@ final class BridgeMySqlDriver
             return preg_replace($quoted, '`' . str_replace('`', '``', $new) . '`', $ddl, 1);
         }
         return preg_replace('/\b' . preg_quote($old, '/') . '\b/', $new, $ddl, 1);
+    }
+
+    /** Prefix CONSTRAINT names with the new table name (MySQL identifiers ≤ 64 chars). */
+    private function uniquifyConstraintNames(string $ddl, string $tableName): string
+    {
+        $out = preg_replace_callback(
+            '/\bCONSTRAINT\s+`((?:[^`]|``)+)`/i',
+            static function (array $m) use ($tableName): string {
+                $old = str_replace('``', '`', $m[1]);
+                if (strcasecmp($old, 'PRIMARY') === 0) {
+                    return $m[0];
+                }
+                $prefix = $tableName . '_';
+                $base = str_starts_with($old, $prefix) ? $old : ($prefix . $old);
+                if (strlen($base) > 64) {
+                    $hash = substr(sha1($old), 0, 8);
+                    $keep = max(1, 64 - 1 - strlen($hash));
+                    $base = substr($tableName, 0, $keep) . '_' . $hash;
+                    if (strlen($base) > 64) {
+                        $base = substr($base, 0, 64);
+                    }
+                }
+                return 'CONSTRAINT `' . str_replace('`', '``', $base) . '`';
+            },
+            $ddl
+        );
+        return is_string($out) ? $out : $ddl;
+    }
+
+    /** @return array<string,mixed> */
+    public function getTableInfo(string $database, string $table): array
+    {
+        return $this->rpc('getTableInfo', [$database, $table]);
+    }
+
+    /** @return array<string,mixed> */
+    public function execute(string $sql, ?string $database = null): array
+    {
+        return $this->rpc('execute', [$sql, $database]);
+    }
+
+    /** @return array<string,mixed> */
+    public function executeMany(string $sql, ?string $database = null): array
+    {
+        return $this->rpc('executeMany', [$sql, $database]);
+    }
+
+    /** @return array<string,mixed> */
+    public function queryPaginated(string $database, string $table, array $options): array
+    {
+        return $this->rpc('queryPaginated', [$database, $table, $options]);
+    }
+
+    /** @return list<string> */
+    public function getPrimaryKeys(string $database, string $table): array
+    {
+        return $this->rpc('getPrimaryKeys', [$database, $table]);
+    }
+
+    /** @param array<string,mixed> $data */
+    public function insertRow(string $database, string $table, array $data): void
+    {
+        $this->rpc('insertRow', [$database, $table, $data]);
+    }
+
+    /**
+     * Bulk multi-row INSERT sent as a single execute RPC (one round-trip instead
+     * of N). Values are SQL-literal escaped; bridge rows arrive as JSON primitives
+     * so string/int/float/bool/null are all covered. Chunked to respect
+     * max_allowed_packet on the bridge side.
+     *
+     * @param list<string> $columns
+     * @param list<array<string,mixed>> $rows
+     */
+    public function insertRows(string $database, string $table, array $columns, array $rows): void
+    {
+        if ($rows === [] || $columns === []) {
+            return;
+        }
+        $tableEsc = $this->quoteIdent($table);
+        $cols = implode(', ', array_map(fn(string $c): string => $this->quoteIdent($c), $columns));
+        $perStmt = max(1, min(500, (int)floor(60000 / max(1, count($columns)))));
+        foreach (array_chunk($rows, $perStmt) as $chunk) {
+            $values = [];
+            foreach ($chunk as $row) {
+                $cells = [];
+                foreach ($columns as $c) {
+                    $cells[] = $this->quoteLiteral(array_key_exists($c, $row) ? $row[$c] : null);
+                }
+                $values[] = '(' . implode(', ', $cells) . ')';
+            }
+            $sql = "INSERT INTO {$tableEsc} ({$cols}) VALUES " . implode(', ', $values);
+            $this->rpc('execute', [$sql, $database]);
+        }
     }
 
     private function quoteIdent(string $name): string
